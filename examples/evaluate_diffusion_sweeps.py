@@ -189,6 +189,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     run_dir = run_dir_for(args)
     checkpoint_dir = run_dir / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    histogram_dir = run_dir / "histograms"
+    histogram_dir.mkdir(parents=True, exist_ok=True)
     inventory_payload = inventory(files)
     write_json(run_dir / "inventory.json", inventory_payload)
     print(json.dumps(inventory_payload, indent=2))
@@ -272,6 +274,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             device=args.device,
             description=item.key,
         )
+        # Persist the per-config comparison histogram so alternative divergences can be
+        # explored offline (see examples/explore_divergences.py) without re-running gpt2.
+        torch.save(comparison_histogram, histogram_dir / f"{item.key}.pt")
         temperature = float(source.get("temperature", item.temperature_label))
         row = {
             "method": item.method,

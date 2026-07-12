@@ -43,45 +43,48 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def load_rows(path: Path) -> list[dict[str, str | int | float]]:
+def load_rows(path: Path, *, metric_key: str = "rank_wasserstein") -> list[dict[str, str | int | float]]:
     with path.open(newline="", encoding="utf-8") as handle:
         rows: list[dict[str, str | int | float]] = list(csv.DictReader(handle))
     if not rows:
         raise ValueError(f"No rows found in {path}.")
-    required = {"method", "nfe", "temperature", "temperature_label", "rank_wasserstein"}
+    required = {"method", "nfe", "temperature", "temperature_label", metric_key}
     missing = required - set(rows[0])
     if missing:
         raise ValueError(f"{path} is missing columns: {sorted(missing)}")
     for row in rows:
         row["nfe"] = int(row["nfe"])
         row["temperature"] = float(row["temperature"])
-        row["rank_wasserstein"] = float(row["rank_wasserstein"])
+        row[metric_key] = float(row[metric_key])
     return rows
 
 
 def best_by_method_nfe(
     rows: Sequence[dict[str, str | int | float]],
+    *,
+    metric_key: str = "rank_wasserstein",
 ) -> list[dict[str, str | int | float]]:
     best: dict[tuple[str, int], dict[str, str | int | float]] = {}
     for row in rows:
         key = (str(row["method"]), int(row["nfe"]))
-        if key not in best or float(row["rank_wasserstein"]) < float(
-            best[key]["rank_wasserstein"]
-        ):
+        if key not in best or float(row[metric_key]) < float(best[key][metric_key]):
             best[key] = dict(row)
     return sorted(best.values(), key=lambda row: (str(row["method"]), int(row["nfe"])))
 
 
 def best_ar_point(
-    rows: Sequence[dict[str, str | int | float]], *, plotted_nfe: int
+    rows: Sequence[dict[str, str | int | float]],
+    *,
+    plotted_nfe: int,
+    metric_key: str = "rank_wasserstein",
 ) -> dict[str, str | int | float]:
-    point = dict(min(rows, key=lambda row: float(row["rank_wasserstein"])))
+    point = dict(min(rows, key=lambda row: float(row[metric_key])))
     point["source_nfe"] = point["nfe"]
     point["nfe"] = plotted_nfe
     return point
 
 
-def load_parameter_free_points(path: Path) -> list[dict[str, str | int | float]]:
+def load_parameter_free_points(path: Path, *, metric_key: str = "rank_wasserstein") -> list[dict[str, str | int | float]]:
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     points = []
@@ -96,7 +99,7 @@ def load_parameter_free_points(path: Path) -> list[dict[str, str | int | float]]
                 "nfe": 0,
                 "temperature": "",
                 "temperature_label": "",
-                "rank_wasserstein": float(row["rank_wasserstein"]),
+                metric_key: float(row[metric_key]),
                 "point_type": "parameter_free",
             }
         )
@@ -111,17 +114,19 @@ def load_parameter_free_points(path: Path) -> list[dict[str, str | int | float]]
 
 def pareto_frontier(
     points: Sequence[dict[str, str | int | float]],
+    *,
+    metric_key: str = "rank_wasserstein",
 ) -> list[dict[str, str | int | float]]:
-    """Return points minimizing both NFE and rank-Wasserstein distance."""
+    """Return points minimizing both NFE and the selected distance metric."""
 
     ordered = sorted(
         points,
-        key=lambda point: (int(point["nfe"]), float(point["rank_wasserstein"])),
+        key=lambda point: (int(point["nfe"]), float(point[metric_key])),
     )
     frontier: list[dict[str, str | int | float]] = []
     best_distance = float("inf")
     for point in ordered:
-        distance = float(point["rank_wasserstein"])
+        distance = float(point[metric_key])
         if distance < best_distance:
             frontier.append(point)
             best_distance = distance

@@ -87,8 +87,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_dir = args.output_dir / "checkpoints"
     token_dir = args.output_dir / "tokens"
+    histogram_dir = args.output_dir / "histograms"
     checkpoint_dir.mkdir(exist_ok=True)
     token_dir.mkdir(exist_ok=True)
+    histogram_dir.mkdir(exist_ok=True)
 
     tokenizer = AutoTokenizer.from_pretrained(args.scorer_model)
     if tokenizer.pad_token_id is None:
@@ -159,6 +161,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             device=args.device,
             description=name,
         )
+        # Persist the comparison histogram for offline divergence exploration.
+        torch.save(histogram, histogram_dir / f"{name}.pt")
         row = {
             "method": name,
             "display_name": name,

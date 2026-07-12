@@ -139,6 +139,7 @@ def candidate_metrics(
     scorer,
     tokenizer,
     args: argparse.Namespace,
+    histogram_path: Path | None = None,
 ) -> dict[str, float | str]:
     comparison_histogram = rank_histogram(
         texts,
@@ -150,6 +151,9 @@ def candidate_metrics(
         normalize=True,
         show_progress=True,
     )
+    if histogram_path is not None:
+        # Persist for offline divergence exploration (examples/explore_divergences.py).
+        torch.save(comparison_histogram, histogram_path)
     row: dict[str, float | str] = {
         "name": name,
         "unigram_entropy": per_sample_unigram_entropy(texts, tokenizer, token_ids=token_ids),
@@ -284,7 +288,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     sample_dir = run_dir / "samples"
     token_dir = run_dir / "tokens"
     table_dir = run_dir / "tables"
-    for path in (sample_dir, token_dir, table_dir):
+    histogram_dir = run_dir / "histograms"
+    for path in (sample_dir, token_dir, table_dir, histogram_dir):
         path.mkdir(parents=True, exist_ok=True)
 
     tokenizer = AutoTokenizer.from_pretrained(args.scorer_model)
@@ -317,6 +322,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         normalize=True,
         show_progress=True,
     )
+    torch.save(reference_histogram, run_dir / "reference_rank_histogram.pt")
 
     print(f"Generating from {args.generator_model}...")
     generator_tokenizer = AutoTokenizer.from_pretrained(args.generator_model)
@@ -410,6 +416,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             scorer=scorer,
             tokenizer=tokenizer,
             args=args,
+            histogram_path=histogram_dir / f"{slug}.pt",
         )
         rows.append(row)
         full_metrics["metrics"].append(row)

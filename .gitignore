@@ -8,8 +8,12 @@ wheels/
 *.egg-info/
 .pytest_cache/
 
-# outputs 
+# outputs
 outputs/
+
+# generated sample data (large, regeneratable) and run logs
+data/
+logs/
 
 # Virtual environments
 .venv

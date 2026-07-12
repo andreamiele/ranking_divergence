@@ -17,6 +17,14 @@ from .metrics import (
     rep_n,
     unique_ngram_ratios,
 )
+from .divergences import (
+    DIVERGENCES,
+    BinScheme,
+    cdf_spearman,
+    coarsen_histogram,
+    compute_all,
+    wasserstein,
+)
 from .evaluation import lexical_metrics, score_token_ids
 from .rank import (
     RankDivergenceResult,
@@ -28,9 +36,15 @@ from .rank import (
 )
 
 __all__ = [
+    "DIVERGENCES",
+    "BinScheme",
+    "cdf_spearman",
     "PhraseBankSampler",
     "PeriodicSampler",
     "RankDivergenceResult",
+    "coarsen_histogram",
+    "compute_all",
+    "wasserstein",
     "MirrorSampler",
     "RestrictedMarginalSampler",
     "TopKSampler",

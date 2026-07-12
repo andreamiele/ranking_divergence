@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import os
 from itertools import islice
 from typing import Iterable
 
 OWT_SAMPLER_SOURCE_SPLIT = "train[:-100000]"
 OWT_HELDOUT_SPLIT = "train[-100000:]"
-DUO_SCRATCH_DIR = "/home/patrick/.cache/discrete_diffusion"
+DUO_SCRATCH_DIR = os.environ.get(
+    "RANKING_DIVERGENCE_CACHE",
+    "/users/staff/dmi-dmi/miele0000/.cache/discrete_diffusion",
+)
 DUO_OWT_CACHE_DIR = f"{DUO_SCRATCH_DIR}/owt"
 
 

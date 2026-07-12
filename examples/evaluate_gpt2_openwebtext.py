@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import torch
@@ -45,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--histogram-dir", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -52,6 +54,10 @@ def resolve_device(device: str) -> str:
     if device != "auto":
         return device
     return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def slugify(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_.-]+", "_", value).strip("_")
 
 
 @torch.inference_mode()
@@ -79,7 +85,7 @@ def generate_model_samples(model, tokenizer, *, num_samples: int, length: int, d
     return tokenizer.batch_decode(trimmed_samples, skip_special_tokens=True)
 
 
-def evaluate_candidate(name: str, texts: list[str], reference_texts: list[str], scorer, tokenizer, args) -> dict:
+def evaluate_candidate(name: str, texts: list[str], reference_texts: list[str], scorer, tokenizer, args, *, histogram_path: Path | None = None) -> dict:
     token_ids = [tokenizer.encode(text, add_special_tokens=False) for text in texts]
     divergence = rank_wasserstein(
         reference_texts,
@@ -91,6 +97,9 @@ def evaluate_candidate(name: str, texts: list[str], reference_texts: list[str], 
         device=args.device,
         show_progress=True,
     )
+    if histogram_path is not None:
+        histogram_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(divergence.comparison_histogram, histogram_path)
     return {
         "name": name,
         "rank_wasserstein": divergence.distance,
@@ -149,6 +158,12 @@ def main() -> None:
 
     topk = RestrictedMarginalSampler.from_texts(sampler_source, tokenizer, k=args.top_k)
     mirror_base = RestrictedMarginalSampler.from_texts(sampler_source, tokenizer, k=args.mirror_k)
+    histogram_dir = args.histogram_dir
+    if histogram_dir is None and args.output is not None:
+        histogram_dir = args.output.parent / "histograms"
+    if histogram_dir is not None:
+        histogram_dir.mkdir(parents=True, exist_ok=True)
+
     candidates = {
         args.generator_model: generated,
         f"top_k_iid_{args.top_k}": topk.sample(
@@ -175,7 +190,15 @@ def main() -> None:
     }
 
     results = [
-        evaluate_candidate(name, texts, reference_texts, scorer, tokenizer, args)
+        evaluate_candidate(
+            name,
+            texts,
+            reference_texts,
+            scorer,
+            tokenizer,
+            args,
+            histogram_path=(histogram_dir / f"{slugify(name)}.pt") if histogram_dir is not None else None,
+        )
         for name, texts in candidates.items()
     ]
     print(json.dumps(results, indent=2))
