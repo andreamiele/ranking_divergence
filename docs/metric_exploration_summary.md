@@ -149,23 +149,50 @@ measured at near-optimum.
 
 `alignment` = mean sign-corrected Spearman correlation between the divergence and
 MAUVE/GM/Energy-distance/FMTyp-p. "Near-optimum" restricts to each model's own
-best-per-NFE point (5 NFEs × N models); "whole-grid" pools every sampled config.
+best-per-NFE point (5 NFEs × N models); "whole-grid" pools every sampled config. Top 20
+of 28 distinct candidates checked, ranked by near-optimum alignment with 3 models (the
+scope judged most trustworthy — see the methodology note above).
 
 | metric | whole-grid, 2-model | whole-grid, 3-model | near-optimum, 2-model | near-optimum, 3-model |
 |---|---:|---:|---:|---:|
-| max-ratio | 0.808 | 0.554 | 0.273 | 0.163 |
-| power-mean | 0.807 | 0.551 | 0.270 | 0.240 |
-| **Rényi-α100** | 0.805 | 0.553 | 0.476 | **0.341** |
+| reverse-KL (bin20log5) | 0.566 | 0.319 | 0.821 | **0.792** |
 | trimmed-chi² | 0.765 | 0.491 | 0.794 | **0.789** |
+| KL (bin50log10) | 0.672 | 0.411 | 0.821 | 0.789 |
+| KL (bin20log5) | 0.672 | 0.411 | 0.821 | 0.789 |
+| Jensen-Shannon (bin20log5) | 0.612 | 0.361 | 0.821 | 0.781 |
+| Hellinger (bin20log5) | 0.617 | 0.365 | 0.821 | 0.781 |
+| Jensen-Shannon (bin50log10) | 0.612 | 0.361 | 0.821 | 0.781 |
+| Symmetric-KL (bin20log5) | 0.624 | 0.370 | 0.821 | 0.781 |
+| chi² (bin20log5) | 0.742 | 0.465 | 0.821 | 0.764 |
+| **chi²** (K25, n_log10) | 0.744 | 0.466 | 0.821 | 0.764 |
+| Wasserstein (sqrt cost) | 0.390 | 0.166 | 0.518 | 0.749 |
+| Total variation (bin20log5) | 0.567 | 0.325 | 0.930 | 0.731 |
+| CDF-L2 | 0.397 | 0.170 | 0.452 | 0.720 |
+| Wasserstein (linear cost) | 0.344 | 0.155 | 0.362 | 0.716 |
+| rank-Wasserstein (log cost) | 0.450 | 0.211 | 0.579 | 0.539 |
+| KS statistic | 0.565 | 0.319 | 0.773 | 0.526 |
+| Wasserstein (capped-log, cap=1000) | 0.457 | 0.217 | 0.524 | 0.463 |
 | Anderson-Darling | 0.731 | 0.443 | 0.555 | 0.445 |
-| chi² | 0.744 | 0.466 | 0.821 | 0.764 |
-| rank-Wasserstein | 0.450 | 0.211 | 0.579 | 0.539 |
+| Rényi-α100 | 0.805 | 0.553 | 0.476 | 0.341 |
+| CDF-Spearman | 0.218 | 0.145 | 0.590 | 0.281 |
 
-Rényi-100 tracks max-ratio/power-mean almost exactly on the whole grid (all ~0.8) and
-collapses the same way they do once restricted to near-optimum — confirming it inherited
-their tail-sensitivity failure mode rather than being a genuine refinement of chi².
-**Trimmed-chi² is the only metric whose near-optimum alignment is stable going from 2 to
-3 models** (0.794 → 0.789); chi² is a close second but loses more ground (0.821 → 0.764).
+Rényi-100, max-ratio and power-mean (not shown — both rank below CDF-Spearman) track
+each other almost exactly on the whole grid (~0.80) and all collapse once restricted to
+near-optimum, confirming they share a tail-sensitivity failure mode rather than being a
+genuine refinement of chi². Total-variation and the Wasserstein-cost variants show the
+opposite pattern — weak or unstable whole-grid alignment but comparatively strong
+near-optimum alignment — a reminder that whole-grid and near-optimum scope can disagree
+in either direction, so both should always be checked.
+
+The top of the near-optimum-3-model column is a near-tie: **reverse-KL and trimmed-chi²
+are within noise of each other** (0.792 vs 0.789, on an n=15-point Spearman correlation),
+with the standard KL divergence right behind at 0.789. All three come from otherwise
+different families (a plain baseline binned f-divergence, a robustness variant of chi²,
+and a robustness-agnostic binned f-divergence), which is a stronger signal than any one
+of them individually — it suggests the *robust, tail-down-weighted* shape shared by all
+three (reverse-KL and KL both compress large ratios logarithmically; trimmed-chi² drops
+the largest terms outright) is what near-optimum alignment actually rewards, more than
+any specific functional form.
 
 ### Original correlation table — rank-W vs KL vs chi², all metrics
 
