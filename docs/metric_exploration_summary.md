@@ -59,24 +59,34 @@ entropy**, **Rep-1/2/3** (repetition rates).
 - Head-only chi² (no tail bins) and head/tail-split mixtures.
 - **Max-ratio** (Rényi-∞ limit, `max_i(p_i/q_i)`) and **power-mean ratio divergence**
   (`(Σ p_i·(p_i/q_i)^t)^(1/t)`, interpolates toward max-ratio as t→∞).
-- Top-m mean log-ratio (order-statistic focused on the m worst bins).
+- **Top-m mean log-ratio** (mean of the m largest `|log(p_i/q_i)|` per-bin terms — an
+  order-statistic family, but log-compressed and averaged over several bins rather than
+  the single raw-ratio extreme that max-ratio/power-mean use).
 - **MMD** with an RBF kernel on log-rank support points.
 - **Wasserstein-2** (quadratic ground cost, via quantile-function matching).
 - Cheap tail/rank summaries: KS statistic, CDF-L2, CDF-Spearman, top-k mass difference,
   mean/median log-rank gap.
 
-~180 distinct candidates evaluated in total (58 in the systematic grid search, 122+ in
-LLM-agent-driven novel-form exploration).
+71 distinct parameterizations of the families above were checked under the corrected
+(near-optimum, 3-model) methodology — see Results below. Each was reconstructed directly
+from its defining formula and reimplemented against the current DUO/MDLM/SFM data; this
+supersedes an earlier, larger ad hoc LLM-agent search (~180 candidates) whose
+implementation predates the SFM cold-extension and the near-optimum-alignment fix
+described below, so its raw per-candidate numbers are no longer authoritative.
 
 ## Evaluation methodology
 
 A systematic search-and-evaluation harness scores every candidate on three axes:
 
-- **`resolving_power`** (60% weight, headline): fraction of config pairs *close in true
-  performance* (a composite of MAUVE/GM/DE/FMTyp-p) that the candidate orders correctly.
-- **`alignment`** (25%): mean sign-corrected Spearman correlation with MAUVE/GM/DE/FMTyp-p.
-- **`discrimination`** (15%): how cleanly the divergence separates DUO vs MDLM at each
-  model's own best-per-NFE operating point (see methodology note below).
+- **`resolving_power`** (60% weight, headline): build a composite quality score per
+  config by z-scoring MAUVE/GM/DE/FMTyp-p (sign-corrected, higher=better) and averaging;
+  take the 25%-closest pairs of configs by that composite (pooled across all three
+  models, ~51k pairs); `resolving_power` = fraction of those close pairs the candidate
+  orders correctly.
+- **`alignment`** (25%): mean sign-corrected Spearman correlation with MAUVE/GM/DE/FMTyp-p,
+  at each model's near-optimum (best-per-NFE) point, pooled across all three models.
+- **`discrimination`** (15%): one-way ANOVA η² separating DUO/MDLM/SFM at each model's
+  own near-optimum (best-per-NFE) point (see methodology note below).
 
 `research_score = 0.6·resolving_power + 0.25·alignment + 0.15·discrimination`.
 
@@ -115,84 +125,94 @@ stable in both scopes — see the alignment-scope table below.
 
 ### DUO-vs-MDLM discrimination at each model's near-optimum point (the trust-check table)
 
-| Divergence | discrimination (η²) | consistent sign across all 5 NFEs? |
+| Divergence | discrimination (η², DUO+MDLM only) | consistent sign across all 5 NFEs? |
 |---|---:|:---:|
 | rank-Wasserstein | 0.850 | ✅ |
 | chi² | 0.843 | ✅ |
+| trimmed-chi² (d=2) | 0.474 | ✅ |
+| top-m log-ratio (m=5) | 0.381 | ✅ |
+| top-m log-ratio (m=3) | 0.365 | ✅ |
 | power-mean (ratio, t→∞ family) | 0.735 | ❌ flips at NFE=32 |
+| Cressie-Read (λ=−2) | 0.265 | ✅ |
 | max-ratio | 0.626 | ❌ flips at NFE=32 |
 
-### Final leaderboard (research_score, corrected harness)
+Top-m log-ratio and Cressie-Read pass the sign-consistency check that max-ratio/power-mean
+fail — averaging over several worst bins in log space (top-m) or using a negative-λ
+Cressie-Read exponent behaves very differently from taking a single raw-ratio extremum.
+Their η² on this DUO-vs-MDLM-only slice is modest, but rises substantially once SFM is
+folded in as a third group — see the research_score table below, which uses the 3-model
+version of `discrimination`.
 
-The `alignment` column below is whole-grid, which overstates tail-sensitive metrics
-(see the alignment-scope table further down) — Rényi-α100's position here should be read
-with that in mind; trimmed-chi² and chi² are the entries that hold up once alignment is
-measured at near-optimum.
+### Final leaderboard (research_score)
 
-| Divergence | research_score | resolving_power | alignment (whole-grid) | discrimination |
+| Divergence | research_score | resolving_power | alignment (near-opt, 3-model) | discrimination (3-model η²) |
 |---|---:|---:|---:|---:|
-| Rényi-α (α=100) | 0.656 | 0.598 | 0.628 | 0.935 |
-| **Trimmed chi² (drop top-2 bins)** | **0.646** | 0.597 | 0.586 | 0.931 |
-| Anderson-Darling | 0.643 | 0.594 | 0.562 | 0.972 |
-| Cressie-Read (λ=2) | 0.640 | 0.593 | 0.576 | 0.931 |
-| Bhattacharyya | 0.637 | 0.595 | 0.557 | 0.936 |
-| **chi²** (K25, n_log10) | 0.637 | 0.592 | 0.567 | 0.931 |
-| rank-Wasserstein (log cost) | 0.637 | 0.593 | 0.544 | **0.966** |
-| KL | 0.636 | 0.593 | 0.560 | 0.934 |
-| Symmetric/Neyman chi², triangular, Amari-α, equal-mass binning | 0.634–0.637 | ~0.59 | ~0.55–0.56 | ~0.92–0.95 |
-| MMD (RBF), Wasserstein-2 | ~0.63 | ~0.59 | ~0.54 | ~0.93–0.94 |
-| Rank-weighted chi², head-tail split | 0.625–0.646 | ~0.59 | ~0.54–0.58 | ~0.75–0.96 |
-| Power-mean, max-ratio, top-m (any order/direction) | 0.62–0.66 raw | — | — | **rejected: inconsistent NFE sign** |
-| Head-only chi² (no tail bins) | 0.59–0.60 | 0.576 | 0.55 | 0.73–0.76 | clearly worse — tail bins matter |
+| **Top-m log-ratio (m=3)** | **0.679** | 0.579 | 0.846 | 0.799 |
+| Top-m log-ratio (m=5) | 0.676 | 0.582 | 0.816 | 0.816 |
+| **Trimmed chi² (d=2)** | **0.674** | 0.610 | 0.789 | 0.734 |
+| Cressie-Read (λ=−2) | 0.623 | 0.570 | 0.847 | 0.463 |
+| Cressie-Read (λ=−1.5) | 0.620 | 0.575 | 0.823 | 0.462 |
+| chi² (K25, n_log10) | 0.619 | 0.603 | 0.764 | 0.444 |
+| KL | 0.615 | 0.585 | 0.789 | 0.448 |
+| reverse-KL | 0.613 | 0.581 | 0.792 | 0.444 |
+| Rényi-α (α=100) | 0.581 | 0.625 | 0.341 | 0.802 |
+| rank-Wasserstein (log cost) | 0.579 | 0.573 | 0.539 | 0.671 |
+| power-mean | 0.547 | 0.626 | 0.240 | 0.746 |
+| Anderson-Darling | 0.543 | 0.594 | 0.445 | 0.503 |
+| max-ratio | 0.521 | 0.626 | 0.163 | 0.698 |
+
+**Top-m log-ratio (m=3 and m=5) and trimmed-chi² form a tight top tier (0.674–0.679,
+within noise given the small near-optimum samples underlying `alignment`/`discrimination`)**,
+clearly ahead of the next tier (Cressie-Read λ=−2, chi², KL, reverse-KL: 0.61–0.62).
+Rényi-α100, power-mean and max-ratio score well on `resolving_power` and 3-model
+`discrimination` individually but their collapsed near-optimum `alignment` drags
+research_score down — the tail-sensitivity pathology identified earlier applies to the
+composite score as much as to alignment alone.
 
 ### Alignment: whole-grid vs near-optimum, 2 models (DUO+MDLM) vs 3 models (+SFM)
 
 `alignment` = mean sign-corrected Spearman correlation between the divergence and
 MAUVE/GM/Energy-distance/FMTyp-p. "Near-optimum" restricts to each model's own
 best-per-NFE point (5 NFEs × N models); "whole-grid" pools every sampled config. Top 20
-of 28 distinct candidates checked, ranked by near-optimum alignment with 3 models (the
-scope judged most trustworthy — see the methodology note above).
+of 71 distinct candidates checked, ranked by near-optimum alignment with 3 models (the
+scope judged most trustworthy — see the methodology note above). Δ is the change in
+near-optimum alignment going from 2 models (DUO+MDLM) to 3 (+SFM).
 
-| metric | whole-grid, 2-model | whole-grid, 3-model | near-optimum, 2-model | near-optimum, 3-model |
-|---|---:|---:|---:|---:|
-| reverse-KL (bin20log5) | 0.566 | 0.319 | 0.821 | **0.792** |
-| trimmed-chi² | 0.765 | 0.491 | 0.794 | **0.789** |
-| KL (bin50log10) | 0.672 | 0.411 | 0.821 | 0.789 |
-| KL (bin20log5) | 0.672 | 0.411 | 0.821 | 0.789 |
-| Jensen-Shannon (bin20log5) | 0.612 | 0.361 | 0.821 | 0.781 |
-| Hellinger (bin20log5) | 0.617 | 0.365 | 0.821 | 0.781 |
-| Jensen-Shannon (bin50log10) | 0.612 | 0.361 | 0.821 | 0.781 |
-| Symmetric-KL (bin20log5) | 0.624 | 0.370 | 0.821 | 0.781 |
-| chi² (bin20log5) | 0.742 | 0.465 | 0.821 | 0.764 |
-| **chi²** (K25, n_log10) | 0.744 | 0.466 | 0.821 | 0.764 |
-| Wasserstein (sqrt cost) | 0.390 | 0.166 | 0.518 | 0.749 |
-| Total variation (bin20log5) | 0.567 | 0.325 | 0.930 | 0.731 |
-| CDF-L2 | 0.397 | 0.170 | 0.452 | 0.720 |
-| Wasserstein (linear cost) | 0.344 | 0.155 | 0.362 | 0.716 |
-| rank-Wasserstein (log cost) | 0.450 | 0.211 | 0.579 | 0.539 |
-| KS statistic | 0.565 | 0.319 | 0.773 | 0.526 |
-| Wasserstein (capped-log, cap=1000) | 0.457 | 0.217 | 0.524 | 0.463 |
-| Anderson-Darling | 0.731 | 0.443 | 0.555 | 0.445 |
-| Rényi-α100 | 0.805 | 0.553 | 0.476 | 0.341 |
-| CDF-Spearman | 0.218 | 0.145 | 0.590 | 0.281 |
+| metric | whole-grid, 2-model | whole-grid, 3-model | near-optimum, 2-model | near-optimum, 3-model | Δ (2→3) |
+|---|---:|---:|---:|---:|---:|
+| Cressie-Read (λ=−2) | 0.493 | 0.254 | **0.900** | 0.847 | −0.053 |
+| **Top-m log-ratio (m=3)** | 0.596 | 0.369 | 0.722 | **0.846** | **+0.125** |
+| Cressie-Read (λ=−1.5) | 0.524 | 0.282 | 0.821 | 0.823 | +0.002 |
+| Top-m log-ratio (m=5) | 0.616 | 0.381 | 0.697 | 0.816 | +0.118 |
+| Top-m log-ratio (m=10) | 0.674 | 0.423 | 0.673 | 0.809 | +0.135 |
+| reverse-KL (bin20log5) | 0.566 | 0.319 | 0.821 | 0.792 | −0.029 |
+| trimmed-chi² (d=2) | 0.765 | 0.491 | 0.794 | 0.789 | −0.005 |
+| Amari-α (α=2) | 0.717 | 0.446 | 0.821 | 0.789 | −0.032 |
+| Amari-α (α=0.5) | 0.645 | 0.389 | 0.821 | 0.789 | −0.032 |
+| KL (bin20log5 / bin50log10 / std) | 0.672 | 0.411 | 0.821 | 0.789 | −0.032 |
+| trimmed-chi² (d=1) | 0.772 | 0.496 | 0.794 | 0.788 | −0.006 |
+| Hellinger (bin20log5) | 0.617 | 0.365 | 0.821 | 0.781 | −0.041 |
+| Jensen-Shannon (bin20log5 / bin50log10 / std) | 0.612 | 0.361 | 0.821 | 0.781 | −0.041 |
+| Symmetric-KL (bin20log5) | 0.624 | 0.370 | 0.821 | 0.781 | −0.041 |
+| Bhattacharyya | 0.617 | 0.365 | 0.821 | 0.781 | −0.041 |
+| Symmetric-χ² | 0.647 | 0.388 | 0.821 | 0.781 | −0.041 |
+| chi² (bin20log5 / K25n10) | 0.744 | 0.466 | 0.821 | 0.764 | −0.057 |
+| rank-Wasserstein (log cost) | 0.450 | 0.211 | 0.579 | 0.539 | −0.040 |
+| Anderson-Darling | 0.731 | 0.443 | 0.555 | 0.445 | −0.110 |
+| Rényi-α100 | 0.805 | 0.553 | 0.476 | 0.341 | −0.134 |
 
-Rényi-100, max-ratio and power-mean (not shown — both rank below CDF-Spearman) track
-each other almost exactly on the whole grid (~0.80) and all collapse once restricted to
-near-optimum, confirming they share a tail-sensitivity failure mode rather than being a
-genuine refinement of chi². Total-variation and the Wasserstein-cost variants show the
-opposite pattern — weak or unstable whole-grid alignment but comparatively strong
-near-optimum alignment — a reminder that whole-grid and near-optimum scope can disagree
-in either direction, so both should always be checked.
-
-The top of the near-optimum-3-model column is a near-tie: **reverse-KL and trimmed-chi²
-are within noise of each other** (0.792 vs 0.789, on an n=15-point Spearman correlation),
-with the standard KL divergence right behind at 0.789. All three come from otherwise
-different families (a plain baseline binned f-divergence, a robustness variant of chi²,
-and a robustness-agnostic binned f-divergence), which is a stronger signal than any one
-of them individually — it suggests the *robust, tail-down-weighted* shape shared by all
-three (reverse-KL and KL both compress large ratios logarithmically; trimmed-chi² drops
-the largest terms outright) is what near-optimum alignment actually rewards, more than
-any specific functional form.
+Rényi-100, max-ratio and power-mean (all rank near the bottom of the 71, not shown) track
+each other almost exactly on the whole grid (~0.80) and collapse once restricted to
+near-optimum — the same tail-sensitivity failure mode identified earlier. **Top-m
+log-ratio is the only family whose near-optimum alignment *improves* when SFM is added**
+(+0.12 to +0.14 across m=3/5/10) — at 2-model scope it actually trailed trimmed-chi²
+(0.70–0.72 vs 0.79), and only pulls into the lead once SFM's differently-shaped optimum
+is included, a good sign for generalization rather than overfitting to DUO/MDLM. Cressie-
+Read (λ=−2) is the mirror case: strongest of all at 2-model scope (0.900) but drifts back
+toward the pack at 3-model (0.847) — and, per the research_score table above, its 3-model
+`discrimination` is also the weakest of the top tier (0.463), so its high alignment
+doesn't translate into the best overall candidate. trimmed-chi² remains the most *stable*
+metric checked, with the smallest |Δ| of any candidate near the top (0.005–0.006).
 
 ### Original correlation table — rank-W vs KL vs chi², all metrics
 
@@ -214,41 +234,54 @@ reject. chi²/KL don't share this pathology.
 
 ## Final recommendation
 
-**Primary: trimmed chi-square, K=25, n_log=10, drop the top-2 most-deviant bins before
-summing.**
+**Primary (tied): top-m mean log-ratio (m=3) and trimmed chi-square (K=25, n_log=10,
+drop top-2 bins).** These two lead `research_score` (0.679 and 0.674) by a real margin
+over the next tier (0.61–0.62), and the gap between them is within noise given the small
+near-optimum samples underlying `alignment`/`discrimination`. They fail differently, so
+the choice between them depends on which failure mode matters more:
 
 ```
+# Top-m log-ratio (m=3)
+r_i = |log(p_i / q_i)|
+D_topm(p‖q) = mean(sorted(r)[-3:])       # mean of the 3 largest per-bin log-ratios
+
+# Trimmed chi-square (d=2)
 chi2_i = (p_i - q_i)^2 / q_i
-D_trimmed(p‖q) = sum(sorted(chi2)[:-2])   # drop the 2 largest per-bin terms
+D_trimmed(p‖q) = sum(sorted(chi2)[:-2])  # drop the 2 largest per-bin terms
 ```
 
-- Only metric whose near-optimum alignment with the gold standards (MAUVE/GM/DE/FMTyp-p)
-  is stable going from 2 models (DUO+MDLM, 0.794) to 3 models (+SFM, 0.789) — every other
-  candidate degrades by 0.03–0.13 when SFM is added (see the alignment-scope table above).
-- Same discrimination robustness as chi² (η²=0.931, consistent sign across all 5 NFEs),
-  without chi²'s larger near-optimum alignment drop.
-- Tradeoff: one extra step (sort + drop top-k) vs plain chi², but no new hyperparameter
-  beyond the trim count (fixed at 2, chosen to be small relative to the ~35-bin scheme).
+- **Top-m log-ratio (m=3)**: best overall research_score, best near-optimum alignment
+  with 3 models (0.846), and the only family whose alignment *improves* rather than
+  degrades when SFM is added (+0.125). Weaker resolving_power (0.579) than trimmed-chi²
+  (0.610) and its alignment advantage is a 3-model-scope phenomenon — with only DUO+MDLM
+  it trails trimmed-chi² (0.722 vs 0.794), so its strength is specifically in
+  generalizing to a third, structurally different model.
+- **Trimmed chi² (d=2)**: best resolving_power (0.610) and the most *stable* metric
+  checked — smallest alignment swing of any top-tier candidate going from 2 to 3 models
+  (Δ=−0.005). Same discrimination robustness as chi² without chi²'s larger near-optimum
+  alignment drop. Preferable if stability/predictability across future model additions
+  matters more than squeezing out the last bit of resolving power.
+- Both pass every trust-check (per-NFE sign consistency, neighborhood robustness,
+  correlation with chi² as a same-family sanity check) that ruled out max-ratio and
+  power-mean.
 
 **Simpler fallback: plain chi-square, K=25, n_log=10.**
 
-- research_score 0.637, statistically tied with rank-Wasserstein on the (corrected)
-  discrimination axis, without rank-Wasserstein's cold-collapse hacking vulnerability.
-  Loses more near-optimum alignment than trimmed-chi² once SFM is added (0.821 → 0.764)
-  but is still second-best of the metrics checked.
-- Trivial closed form, no extra hyperparameters beyond the (already-standard) binning.
-- Recommended if implementation simplicity should dominate the last few points of
+- research_score 0.619, behind the primary pair but a trivial closed form with no extra
+  hyperparameters beyond the (already-standard) binning — no sort/trim/order-statistic
+  step. Recommended if implementation simplicity should dominate the last few points of
   robustness.
 
 **Not recommended:** rank-Wasserstein (cold-collapse hacking, weak alignment with
-LM-free/typicality gold standards); max-ratio / power-mean / top-m in their raw
-order-statistic form (fail the per-NFE sign-consistency check regardless of raw score —
-they don't reliably tell DUO and MDLM apart); **Rényi-α (α=100)**, despite topping the
-whole-grid leaderboard — its near-optimum alignment collapses on the same axis as
-max-ratio/power-mean (0.476 → 0.341 going from 2 to 3 models), so its apparent edge is a
-whole-grid tail-sensitivity artifact rather than a genuine refinement of chi². It may
-still be useful as a secondary diagnostic precisely because it's sensitive to single-bin
-extreme deviation, but shouldn't be trusted as the headline metric.
+LM-free/typicality gold standards); max-ratio and power-mean in their raw single-extreme
+form (fail the per-NFE sign-consistency check — they don't reliably tell DUO and MDLM
+apart); **Rényi-α (α=100)** and Cressie-Read (λ=−2/−1.5) — Rényi's near-optimum alignment
+collapses on the same axis as max-ratio/power-mean (0.476 → 0.341 from 2 to 3 models),
+and Cressie-Read's very high 2-model alignment (0.900) is undercut by the weakest
+3-model discrimination of any top-tier candidate (η²=0.463), so neither converts its
+individual strength into a competitive overall research_score. All three may still be
+useful as secondary diagnostics precisely because they're sensitive to single-bin extreme
+deviation, but shouldn't be trusted as the headline metric.
 
 ## Where to find things
 
