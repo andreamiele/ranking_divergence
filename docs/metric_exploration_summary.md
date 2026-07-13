@@ -8,11 +8,13 @@ established distributional quality metrics and cleanly discriminating between mo
 ## Setup
 
 - **Models:** DUO, MDLM, S-FLM (SFM), sampled with the official `s-flm` repo/checkpoints.
-- **Grid:** temperature × NFE ∈ {8, 16, 32, 64, 128}. For head-to-head comparisons, DUO
-  and MDLM are restricted to an **identical matched grid** (33 temps, 0.6–1.4) —
-  `duo-sflm-v1` (subset) and `mdlm-sflm-duotemps-v1`. SFM uses the same grid
-  (`sfm-sflm-duotemps-v1`) but its true cold optimum falls outside 0.6–1.4 (no interior
-  minimum found there), so SFM is excluded from head-to-head discrimination checks.
+- **Grid:** temperature × NFE ∈ {8, 16, 32, 64, 128}. DUO and SFM were both extended down
+  to t=0.2 (from an initial 0.6–1.4 matched grid) after the original SFM sweep showed no
+  interior minimum in 0.6–1.4 — every divergence was monotonically increasing across the
+  whole sampled range, i.e. the sweep never reached SFM's true cold optimum. With the
+  extension, DUO and SFM both cover t=0.2–1.4 (245 configs each) and MDLM keeps its
+  original wide range (150 configs, t=0.1–2.0). All three models are now included in every
+  head-to-head comparison below.
 - **Reference:** rank histogram of held-out OpenWebText (128 docs) scored with
   `gpt2-large`, identical across all models.
 - **Binning:** candidate divergences operate on a coarsened histogram — **K linear head
@@ -99,6 +101,21 @@ robustness (not a knife-edge), per-NFE sign consistency, correlation with chi² 
 family vs a different signal), and individual gold-metric breakdown (not cherry-picked to
 one metric).
 
+**A fourth bug, found later: the same whole-grid-vs-near-optimum flaw also inflated
+`alignment`, not just `discrimination`.** Fix #2 above was applied to the discrimination
+axis but not re-checked against alignment. Once SFM was added with its own full cold
+range, re-running alignment (Spearman vs MAUVE/GM/DE/FMTyp-p) at each model's per-NFE
+near-optimum point — rather than pooled across the whole temperature grid — showed that
+**Rényi-α100's apparent lead was a whole-grid artifact**: on the whole grid it scores
+~0.80, nearly identical to max-ratio and power-mean (~0.81), because α=100 makes it
+behave almost like a Rényi-∞/max-ratio statistic (dominated by whichever single bin
+deviates most). Across the whole grid this doesn't matter — cold, collapsed,
+high-repetition configs are uniformly bad on every axis, so any tail-sensitive metric
+"wins" on the trivial global trend. Restricted to near-optimum points, where the actual
+discrimination has to happen, Rényi-100 collapses the same way max-ratio/power-mean did
+(0.48 → 0.34 going from 2 to 3 models), while chi² and trimmed-chi² stay stable in both
+scopes. See the alignment-scope table below.
+
 ## Results
 
 ### DUO-vs-MDLM discrimination at each model's near-optimum point (the trust-check table)
@@ -112,10 +129,16 @@ one metric).
 
 ### Final leaderboard (research_score, corrected harness)
 
-| Divergence | research_score | resolving_power | alignment | discrimination |
+**Caveat added after the SFM re-check above: the `alignment` column here was computed
+whole-grid, which we now know inflates tail-sensitive metrics (Rényi-α100 most of all —
+see the alignment-scope table above). Treat Rényi-α100's rank in this table as
+overstated; trimmed-chi² and chi² are the trustworthy top entries once alignment is
+measured at near-optimum.**
+
+| Divergence | research_score | resolving_power | alignment (whole-grid) | discrimination |
 |---|---:|---:|---:|---:|
-| **Rényi-α (α=100)** | **0.656** | 0.598 | **0.628** | 0.935 |
-| Trimmed chi² (drop top-2 bins) | 0.646 | 0.597 | 0.586 | 0.931 |
+| ~~Rényi-α (α=100)~~ | ~~0.656~~ | 0.598 | 0.628 (inflated, see above) | 0.935 |
+| **Trimmed chi² (drop top-2 bins)** | **0.646** | 0.597 | 0.586 | 0.931 |
 | Anderson-Darling | 0.643 | 0.594 | 0.562 | 0.972 |
 | Cressie-Read (λ=2) | 0.640 | 0.593 | 0.576 | 0.931 |
 | Bhattacharyya | 0.637 | 0.595 | 0.557 | 0.936 |
@@ -128,14 +151,27 @@ one metric).
 | Power-mean, max-ratio, top-m (any order/direction) | 0.62–0.66 raw | — | — | **rejected: inconsistent NFE sign** |
 | Head-only chi² (no tail bins) | 0.59–0.60 | 0.576 | 0.55 | 0.73–0.76 | clearly worse — tail bins matter |
 
-### Individual gold-metric correlation (Rényi-100 vs chi², pooled DUO+MDLM+SFM)
+### Alignment: whole-grid vs near-optimum, 2 models (DUO+MDLM) vs 3 models (+SFM)
 
-| | MAUVE | GM | Energy distance | FMTyp-p |
+`alignment` = mean sign-corrected Spearman correlation between the divergence and
+MAUVE/GM/Energy-distance/FMTyp-p. "Near-optimum" restricts to each model's own
+best-per-NFE point (5 NFEs × N models); "whole-grid" pools every sampled config.
+
+| metric | whole-grid, 2-model | whole-grid, 3-model | near-optimum, 2-model | near-optimum, 3-model |
 |---|---:|---:|---:|---:|
-| Rényi-100 | **−0.687** | +0.890 | **+0.477** | **−0.458** |
-| chi² | −0.644 | **+0.904** | +0.364 | −0.356 |
+| max-ratio | 0.808 | 0.554 | 0.273 | 0.163 |
+| power-mean | 0.807 | 0.551 | 0.270 | 0.240 |
+| **Rényi-α100** | 0.805 | 0.553 | 0.476 | **0.341** |
+| trimmed-chi² | 0.765 | 0.491 | 0.794 | **0.789** |
+| Anderson-Darling | 0.731 | 0.443 | 0.555 | 0.445 |
+| chi² | 0.744 | 0.466 | 0.821 | 0.764 |
+| rank-Wasserstein | 0.450 | 0.211 | 0.579 | 0.539 |
 
-Rényi-100 wins 3 of 4; chi² is narrowly better only on GM.
+Rényi-100 tracks max-ratio/power-mean almost exactly on the whole grid (all ~0.8) and
+collapses the same way they do once restricted to near-optimum — confirming it inherited
+their tail-sensitivity failure mode rather than being a genuine refinement of chi².
+**Trimmed-chi² is the only metric whose near-optimum alignment is stable going from 2 to
+3 models** (0.794 → 0.789); chi² is a close second but loses more ground (0.821 → 0.764).
 
 ### Original correlation table — rank-W vs KL vs chi², all metrics
 
@@ -157,32 +193,47 @@ reject. chi²/KL don't share this pathology.
 
 ## Final recommendation
 
-**Primary: Rényi divergence, α=100, on ~25–30 bins (20–25 linear head + 5–10 log tail),
-computed in log-space (log-sum-exp) for numerical stability.**
+**Primary: trimmed chi-square, K=25, n_log=10, drop the top-2 most-deviant bins before
+summing.**
 
 ```
-D_100(p‖q) = log(Σ_i p_i^100 · q_i^(1-100)) / 99
+chi2_i = (p_i - q_i)^2 / q_i
+D_trimmed(p‖q) = sum(sorted(chi2)[:-2])   # drop the 2 largest per-bin terms
 ```
 
-- Best `research_score` (0.656), best alignment with the gold standards, consistent
-  model discrimination — validated with the full trust-check battery (smooth interior
-  optimum in α, bounded bootstrap noise, correct sign at every NFE, correlates 0.957
-  with chi² so it's a real refinement not a different signal).
-- Tradeoff: one extra hyperparameter (α) and a log-sum-exp implementation, vs a trivial
-  closed form for chi².
+- Only metric whose near-optimum alignment with the gold standards (MAUVE/GM/DE/FMTyp-p)
+  is stable going from 2 models (DUO+MDLM, 0.794) to 3 models (+SFM, 0.789) — every other
+  candidate, including Rényi-α100, degrades by 0.03–0.13 when SFM is added (see the
+  alignment-scope table above).
+- research_score 0.646 in the whole-grid leaderboard, and the top trustworthy entry once
+  Rényi-α100's inflated whole-grid alignment is discounted.
+- Same discrimination robustness as chi² (η²=0.931, consistent sign across all 5 NFEs),
+  without chi²'s larger near-optimum alignment drop.
+- Tradeoff: one extra step (sort + drop top-k) vs plain chi², but no new hyperparameter
+  beyond the trim count (fixed at 2, chosen to be small relative to the ~35-bin scheme).
 
 **Simpler fallback: plain chi-square, K=25, n_log=10.**
 
 - research_score 0.637, statistically tied with rank-Wasserstein on the (corrected)
-  discrimination axis, but **without** rank-Wasserstein's cold-collapse hacking
-  vulnerability and with far better gold-standard alignment.
+  discrimination axis, without rank-Wasserstein's cold-collapse hacking vulnerability.
+  Loses more near-optimum alignment than trimmed-chi² once SFM is added (0.821 → 0.764)
+  but is still second-best of the metrics checked.
 - Trivial closed form, no extra hyperparameters beyond the (already-standard) binning.
-- Recommended if simplicity should dominate the last few points of resolving power.
+- Recommended if implementation simplicity should dominate the last few points of
+  robustness.
+
+**Downgraded after the SFM re-check: Rényi-α (α=100).** Originally the top pick on
+whole-grid `research_score` (0.656), but its near-optimum alignment collapses on the
+same axis as max-ratio/power-mean (0.476 → 0.341 going from 2 to 3 models) — see
+"A fourth bug" above. It is not a genuine refinement of chi²; its earlier apparent edge
+was a whole-grid tail-sensitivity artifact. Not recommended as primary; may still be
+useful as a secondary diagnostic precisely because it IS sensitive to single-bin extreme
+deviation, but should not be trusted as the headline metric.
 
 **Not recommended:** rank-Wasserstein (cold-collapse hacking, weak alignment with
 LM-free/typicality gold standards), max-ratio / power-mean / top-m in their raw
 order-statistic form (fail the per-NFE sign-consistency check regardless of raw score —
-they don't reliably tell DUO and MDLM apart).
+they don't reliably tell DUO and MDLM apart, and now Rényi-α100 for the same reason).
 
 ## Where to find things
 
