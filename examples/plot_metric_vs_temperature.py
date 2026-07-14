@@ -26,13 +26,16 @@ LABELS = {
     "gm": "Gradient Moment",
     "energy_distance": "Energy distance D²_E",
     "fmtyp_p": "FMTyp-p",
-    "chi2": "Chi-square (25+5 bins)",
+    "chi2": "Chi-square (25+10 bins)",
     "max_ratio": "Max-ratio (autoresearch, 15+15 bins)",
     "powmean": "Power-mean t=300 (autoresearch, 15+15 bins)",
+    "trimmed_chi2": "Trimmed chi-square (drop top-2, 25+10 bins)",
+    "topm_logratio_m3": "Top-m log-ratio (m=3, 15+15 bins)",
 }
 # distance-like metrics span orders of magnitude -> log y; entropy/MAUVE/etc stay linear.
 LOG_SCALE: set[str] = {"gen_ppl", "rank_wasserstein", "chi_square_bin20log5",
-                       "kl_bin20log5", "js_bin20log5", "chi2", "max_ratio", "powmean"}
+                       "kl_bin20log5", "js_bin20log5", "chi2", "max_ratio", "powmean",
+                       "trimmed_chi2", "topm_logratio_m3"}
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

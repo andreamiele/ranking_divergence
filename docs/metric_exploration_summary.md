@@ -91,6 +91,39 @@ single best alignment score (0.847) but the weakest discrimination in the top ti
 tier: strong on resolving_power/discrimination individually, but their collapsed
 near-optimum alignment (the tail-sensitivity artifact above) drags the composite down.
 
+### What the top metrics actually compute
+
+All formulas below act on the coarsened histograms — reference `p`, comparison `q`,
+both normalized over the same K-linear-head + n_log-log-tail bins.
+
+- **chi-square**: `Σ_i (p_i − q_i)² / q_i` — classic per-bin squared deviation. Simple,
+  but a single bin where the comparison badly under-represents a rank (small `q_i`) can
+  dominate the entire sum.
+- **Trimmed chi-square**: the same per-bin terms as chi-square, sorted, with the 2
+  largest dropped before summing. This directly removes the single-bin blowups plain
+  chi-square is vulnerable to, while keeping the rest of the shape comparison intact —
+  it's chi-square made robust, not a different signal.
+- **Top-m log-ratio**: instead of squared deviation, takes `|log(p_i/q_i)|` per bin (log
+  compresses large ratios instead of squaring them), sorts, and averages the `m=3`
+  largest. It's an order statistic over a *few* worst bins — not all bins like
+  chi-square, and not just the single worst bin like max-ratio/power-mean/Rényi-α100.
+
+**Why the log + average-of-m design wins where max-ratio/power-mean/Rényi-α100 fail:**
+those three all reduce, in the end, to a statistic dominated by a single most-divergent
+bin, in *un-compressed* ratio space (`max_i p_i/q_i`; power-mean is a soft-max over the
+same ratios; Rényi-α at α=100 is already numerically close to its α→∞ limit,
+`log(max_i p_i/q_i)`). One noisy bin — often from small-sample estimation noise, not a
+real quality difference — can swing the whole metric, which is exactly why they flip
+sign on DUO-vs-MDLM at NFE=32. Top-m log-ratio breaks that fragility twice over:
+log-compression tames the magnitude of any single extreme ratio, and averaging over
+`m=3` bins means one noisy bin can no longer set the entire value.
+Cressie-Read at λ=−2 is a different case: `D_λ(p‖q) = Σ_i p_i[(p_i/q_i)^λ − 1] /
+(λ(λ+1))` reduces at λ=−2 to (up to constants) `Σ_i q_i²/p_i` — it heavily up-weights
+bins where the *comparison* has mass the *reference* doesn't (ranks the model overuses
+relative to real text). That's a genuinely different tail focus from chi-square/top-m's
+symmetric-ish deviation, which is consistent with it topping `alignment` alone but
+lagging on `discrimination` (it isn't measuring the same kind of separation).
+
 ### The original correlation table that started this investigation
 
 Spearman correlation, pooled DUO+MDLM+SFM, whole grid:
@@ -149,3 +182,7 @@ secondary diagnostic, not as the headline metric).
   `reference_rank_histogram.pt` — the per-config rank histograms and held-out reference
   histograms underlying every result in this document, so they can be reproduced without
   re-scoring with `gpt2-large`.
+- `outputs/divergence_exploration/curves/` — rendered figures, including the cross-model
+  efficiency summaries (`efficiency_summary_{chi2,trimmed_chi2,rank_wasserstein,
+  topm_logratio_m3,...}.png`) and `sfm_newtemp_6metrics_vs_temp.png` (SFM's own
+  entropy/gen-PPL/divergence curves over the full cold-extended t=0.2–1.4 range).
